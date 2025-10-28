@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -282,7 +281,7 @@
         <div class="card scoreboard-section">
             <h2>現在のスコア</h2>
             <div class="scoreboard" id="scoreboard">
-                <!-- 動的に生成される -->
+                <!-- JSで動的に生成 -->
             </div>
         </div>
 
@@ -317,80 +316,71 @@
         </div>
     </div>
 
-    <script>
-        // ===== 定数 =====
+    <script type="module">
+        // ===== Firestoreセットアップ =====
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js';
+        import {
+            getFirestore,
+            collection,
+            onSnapshot,
+            deleteDoc,
+            doc,
+            getDocs
+        } from 'https://www.gstatic.com/firebasejs/12.4.0/firebase-firestore.js';
+
+        // 投票ページと同じ設定
+        const firebaseConfig = {
+            apiKey: "AIzaSyDES9Z2fu4v7BG5PFKQS2T-CFB_qESIOGo",
+            authDomain: "curry-project-9f5c4.firebaseapp.com",
+            projectId: "curry-project-9f5c4",
+            storageBucket: "curry-project-9f5c4.firebasestorage.app",
+            messagingSenderId: "52880163835",
+            appId: "1:52880163835:web:4a848a437acfc90b14415e",
+            measurementId: "G-TN13LGRGV7"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const votesCol = collection(db, 'votes');
+
+        // 得点ルール（投票ページと揃える）
         const SCORE_MAP = {
             0: 0,
             1: 2,
             2: 4,
             3: 5,
         };
-        const STORAGE_KEY = "weightedVoteData_v2_anonymous";
 
-        // ===== 状態 =====
+        // 状態
         let votes = [];
 
-        // ===== 初期化処理 =====
-        document.addEventListener('DOMContentLoaded', function() {
-            // localStorageからデータを復元
-            loadVotes();
+        // DOM参照
+        const scoreboardEl = document.getElementById('scoreboard');
+        const logTableEl = document.getElementById('logTable');
+        const messageEl = document.getElementById('message');
+        const refreshBtn = document.getElementById('refreshBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const backBtn = document.getElementById('backBtn');
 
-            // 画面を描画
+        // ===== Firestoreをリアルタイム購読 =====
+        // votesコレクション全体を監視して、変化があれば即描画を更新する
+        onSnapshot(votesCol, (snapshot) => {
+            votes = snapshot.docs.map((d) => {
+                const data = d.data();
+                return {
+                    id: d.id,
+                    correctCount: data.correctCount ?? 0,
+                    team: data.team ?? '',
+                    points: data.points ?? 0,
+                };
+            });
+
             renderAll();
-
-            // イベントリスナーをバインド
-            document.getElementById('refreshBtn').addEventListener('click', function() {
-                loadVotes();
-                renderAll();
-                showMessage('データを更新しました', 'reset');
-            });
-            document.getElementById('resetBtn').addEventListener('click', resetAll);
-            document.getElementById('backBtn').addEventListener('click', function() {
-                window.location.href = 'weighted_vote_tool.html';
-            });
-
-            // リセット処理
-            function resetAll() {
-                if (!confirm('すべての投票データを削除してもよろしいですか？')) {
-                    return;
-                }
-
-                // データをリセット
-                votes = [];
-                localStorage.removeItem(STORAGE_KEY);
-
-                // 画面を更新
-                renderAll();
-
-                // リセットメッセージを表示
-                showMessage('すべてのデータをリセットしました', 'reset');
-            }
-
-            // 定期的に自動更新（5秒ごと）
-            setInterval(function() {
-                loadVotes();
-                renderAll();
-            }, 5000);
         });
 
-        // ===== データ読み込み処理 =====
-        function loadVotes() {
-            const savedData = localStorage.getItem(STORAGE_KEY);
-            if (savedData) {
-                try {
-                    votes = JSON.parse(savedData);
-                } catch (e) {
-                    console.error('Failed to parse saved data:', e);
-                    votes = [];
-                }
-            } else {
-                votes = [];
-            }
-        }
-
-        // ===== スコア計算処理 =====
+        // ===== スコア集計・順位決定 =====
         function calcScores() {
-            // チームごとの合計点を計算
+            // チームごとの合計点
             const teamTotals = {
                 'Aチーム': 0,
                 'Bチーム': 0,
@@ -398,19 +388,19 @@
             };
 
             votes.forEach(vote => {
-                teamTotals[vote.team] += vote.points;
+                if (teamTotals[vote.team] !== undefined) {
+                    teamTotals[vote.team] += vote.points;
+                }
             });
 
-            // スコアと順位の配列を作成
+            // [{team, total}] の配列にして降順ソート
             const scoreArray = Object.entries(teamTotals).map(([team, total]) => ({
-                team: team,
-                total: total,
+                team,
+                total,
             }));
-
-            // スコア降順でソート
             scoreArray.sort((a, b) => b.total - a.total);
 
-            // 順位を計算（同点は同じ順位）
+            // 順位割り当て（同点は同順位）
             const rankMap = {};
             let currentRank = 1;
             for (let i = 0; i < scoreArray.length; i++) {
@@ -423,51 +413,59 @@
                 };
             }
 
+            // 票ゼロでランクついてないチームを補完
+            ['Aチーム', 'Bチーム', 'Cチーム'].forEach(team => {
+                if (!rankMap[team]) {
+                    rankMap[team] = {
+                        total: teamTotals[team] || 0,
+                        rank: 3,
+                    };
+                }
+            });
+
             return rankMap;
         }
 
-        // ===== スコアボード描画処理 =====
+        // ===== スコアボード描画 =====
         function renderScoreboard() {
-            const scoreboard = document.getElementById('scoreboard');
             const scores = calcScores();
-
-            // A/B/C順で表示（固定順）
             const teams = ['Aチーム', 'Bチーム', 'Cチーム'];
-            scoreboard.innerHTML = '';
+
+            scoreboardEl.innerHTML = '';
 
             teams.forEach(team => {
-                const score = scores[team];
-                const card = document.createElement('div');
-                card.className = `team-card rank-${score.rank}`;
-                
-                let rankText = `現在 ${score.rank} 位`;
-                if (score.rank === 1) {
+                const scoreInfo = scores[team];
+                const rank = scoreInfo.rank;
+                const total = scoreInfo.total;
+
+                let rankText = `現在 ${rank} 位`;
+                if (rank === 1) {
                     rankText = '🥇 ' + rankText;
-                } else if (score.rank === 2) {
+                } else if (rank === 2) {
                     rankText = '🥈 ' + rankText;
-                } else if (score.rank === 3) {
+                } else if (rank === 3) {
                     rankText = '🥉 ' + rankText;
                 }
 
+                const card = document.createElement('div');
+                card.className = `team-card rank-${rank}`;
                 card.innerHTML = `
                     <div class="team-name">${team}</div>
-                    <div class="team-score">${score.total}</div>
+                    <div class="team-score">${total}</div>
                     <div class="team-rank">${rankText}</div>
                 `;
-                scoreboard.appendChild(card);
+                scoreboardEl.appendChild(card);
             });
         }
 
-        // ===== 投票ログ描画処理 =====
+        // ===== 投票ログ描画 =====
         function renderVoteLog() {
-            const logTable = document.getElementById('logTable');
-
-            if (votes.length === 0) {
-                logTable.innerHTML = '<tr><td colspan="4" class="log-empty">投票がまだ登録されていません</td></tr>';
+            if (!votes || votes.length === 0) {
+                logTableEl.innerHTML = '<tr><td colspan="4" class="log-empty">投票がまだ登録されていません</td></tr>';
                 return;
             }
 
-            logTable.innerHTML = '';
+            logTableEl.innerHTML = '';
             votes.forEach((vote, index) => {
                 const row = document.createElement('tr');
                 row.innerHTML = `
@@ -476,27 +474,58 @@
                     <td>${vote.points}点</td>
                     <td>${vote.team}</td>
                 `;
-                logTable.appendChild(row);
+                logTableEl.appendChild(row);
             });
         }
 
-        // ===== 全描画処理 =====
+        // ===== まとめて描画 =====
         function renderAll() {
             renderScoreboard();
             renderVoteLog();
         }
 
-        // ===== メッセージ表示処理 =====
-        function showMessage(text, type) {
-            const messageEl = document.getElementById('message');
+        // ===== メッセージ表示 =====
+        function showMessage(text, typeClass) {
             messageEl.textContent = text;
-            messageEl.className = `message ${type}`;
-
-            // 3秒後に非表示
+            messageEl.className = `message ${typeClass}`;
             setTimeout(() => {
                 messageEl.className = 'message';
             }, 3000);
         }
+
+        // ===== 全データ削除（リセット機能）=====
+        async function resetAll() {
+            if (!confirm('すべての投票データを削除してもよろしいですか？')) {
+                return;
+            }
+
+            try {
+                // コレクション内の全ドキュメントを一括削除
+                const snap = await getDocs(votesCol);
+                const deletions = [];
+                snap.forEach((docSnap) => {
+                    deletions.push(deleteDoc(doc(db, 'votes', docSnap.id)));
+                });
+                await Promise.all(deletions);
+
+                showMessage('すべてのデータをリセットしました', 'reset');
+            } catch (err) {
+                console.error(err);
+                showMessage('削除中にエラーが発生しました', 'reset');
+            }
+        }
+
+        // ===== ボタン動作 =====
+        refreshBtn.addEventListener('click', () => {
+            // onSnapshotですでに最新を見てるので、見た目だけメッセージを出す
+            showMessage('最新のデータを表示中です', 'reset');
+        });
+
+        resetBtn.addEventListener('click', resetAll);
+
+        backBtn.addEventListener('click', () => {
+            window.location.href = 'weighted_vote_tool.html';
+        });
     </script>
 </body>
 </html>
