@@ -1,1 +1,502 @@
 
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>重み付きチーム投票・集計ツール - 結果発表</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: #f7f7f7;
+            padding: 20px;
+            color: #333;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        /* ヘッダー */
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            color: #222;
+        }
+
+        .header .badge {
+            display: inline-block;
+            background-color: #ff6b6b;
+            color: white;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+            margin-bottom: 15px;
+        }
+
+        .header p {
+            font-size: 1.1em;
+            color: #666;
+            line-height: 1.6;
+        }
+
+        /* カード共通スタイル */
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        /* スコアボード */
+        .scoreboard-section h2 {
+            font-size: 1.3em;
+            margin-bottom: 20px;
+            color: #222;
+        }
+
+        .scoreboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .team-card {
+            background: linear-gradient(135deg, #f5f5f5 0%, #ffffff 100%);
+            border: 2px solid #e0e0e0;
+            border-radius: 12px;
+            padding: 25px;
+            text-align: center;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .team-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        .team-card.rank-1 {
+            background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%);
+            border-color: #ffc700;
+        }
+
+        .team-card.rank-2 {
+            background: linear-gradient(135deg, #c0c0c0 0%, #e8e8e8 100%);
+            border-color: #a0a0a0;
+        }
+
+        .team-card.rank-3 {
+            background: linear-gradient(135deg, #cd7f32 0%, #e8b88a 100%);
+            border-color: #b87333;
+        }
+
+        .team-name {
+            font-size: 1.2em;
+            font-weight: 700;
+            color: #222;
+            margin-bottom: 15px;
+        }
+
+        .team-score {
+            font-size: 3em;
+            font-weight: 800;
+            color: #0066cc;
+            margin-bottom: 10px;
+        }
+
+        .team-rank {
+            font-size: 0.95em;
+            color: #666;
+            font-weight: 500;
+        }
+
+        /* 投票ログテーブル */
+        .log-section h2 {
+            font-size: 1.3em;
+            margin-bottom: 20px;
+            color: #222;
+        }
+
+        .log-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.95em;
+        }
+
+        .log-table thead {
+            background-color: #f0f0f0;
+        }
+
+        .log-table th {
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            color: #333;
+            border-bottom: 2px solid #ddd;
+        }
+
+        .log-table td {
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+            color: #555;
+        }
+
+        .log-table tbody tr:hover {
+            background-color: #f9f9f9;
+        }
+
+        .log-table tbody tr:nth-child(even) {
+            background-color: #fafafa;
+        }
+
+        .log-empty {
+            text-align: center;
+            padding: 30px;
+            color: #999;
+            font-style: italic;
+        }
+
+        /* ボタン */
+        .button-group {
+            display: flex;
+            gap: 15px;
+            margin-top: 25px;
+        }
+
+        button {
+            flex: 1;
+            padding: 14px 20px;
+            font-size: 1em;
+            font-weight: 600;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background-color 0.3s, transform 0.1s;
+        }
+
+        button:active {
+            transform: scale(0.98);
+        }
+
+        .btn-back {
+            background-color: #6c757d;
+            color: white;
+        }
+
+        .btn-back:hover {
+            background-color: #5a6268;
+        }
+
+        .btn-refresh {
+            background-color: #0066cc;
+            color: white;
+        }
+
+        .btn-refresh:hover {
+            background-color: #0052a3;
+        }
+
+        .btn-reset {
+            background-color: #cc3333;
+            color: white;
+        }
+
+        .btn-reset:hover {
+            background-color: #a62a2a;
+        }
+
+        /* メッセージ */
+        .message {
+            margin-top: 15px;
+            padding: 12px 15px;
+            border-radius: 6px;
+            font-weight: 500;
+            display: none;
+        }
+
+        .message.reset {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            display: block;
+        }
+
+        /* レスポンシブ */
+        @media (max-width: 600px) {
+            .header h1 {
+                font-size: 1.8em;
+            }
+
+            .header p {
+                font-size: 0.95em;
+            }
+
+            .button-group {
+                flex-direction: column;
+            }
+
+            .scoreboard {
+                grid-template-columns: 1fr;
+            }
+
+            .team-score {
+                font-size: 2.5em;
+            }
+
+            .log-table {
+                font-size: 0.85em;
+            }
+
+            .log-table th,
+            .log-table td {
+                padding: 8px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- ヘッダー -->
+        <div class="header">
+            <div class="badge">管理者用 - 結果発表</div>
+            <h1>投票結果</h1>
+            <p>リアルタイム集計結果</p>
+        </div>
+
+        <!-- スコアボード -->
+        <div class="card scoreboard-section">
+            <h2>現在のスコア</h2>
+            <div class="scoreboard" id="scoreboard">
+                <!-- 動的に生成される -->
+            </div>
+        </div>
+
+        <!-- 投票ログ -->
+        <div class="card log-section">
+            <h2>投票ログ</h2>
+            <table class="log-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>正解数</th>
+                        <th>付与点</th>
+                        <th>投票チーム</th>
+                    </tr>
+                </thead>
+                <tbody id="logTable">
+                    <tr>
+                        <td colspan="4" class="log-empty">投票がまだ登録されていません</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- ボタングループ -->
+        <div class="card">
+            <div class="button-group">
+                <button class="btn-refresh" id="refreshBtn">更新</button>
+                <button class="btn-reset" id="resetBtn">全データをリセット</button>
+                <button class="btn-back" id="backBtn">投票ページに戻る</button>
+            </div>
+            <div class="message" id="message"></div>
+        </div>
+    </div>
+
+    <script>
+        // ===== 定数 =====
+        const SCORE_MAP = {
+            0: 0,
+            1: 2,
+            2: 4,
+            3: 5,
+        };
+        const STORAGE_KEY = "weightedVoteData_v2_anonymous";
+
+        // ===== 状態 =====
+        let votes = [];
+
+        // ===== 初期化処理 =====
+        document.addEventListener('DOMContentLoaded', function() {
+            // localStorageからデータを復元
+            loadVotes();
+
+            // 画面を描画
+            renderAll();
+
+            // イベントリスナーをバインド
+            document.getElementById('refreshBtn').addEventListener('click', function() {
+                loadVotes();
+                renderAll();
+                showMessage('データを更新しました', 'reset');
+            });
+            document.getElementById('resetBtn').addEventListener('click', resetAll);
+            document.getElementById('backBtn').addEventListener('click', function() {
+                window.location.href = 'weighted_vote_tool.html';
+            });
+
+            // リセット処理
+            function resetAll() {
+                if (!confirm('すべての投票データを削除してもよろしいですか？')) {
+                    return;
+                }
+
+                // データをリセット
+                votes = [];
+                localStorage.removeItem(STORAGE_KEY);
+
+                // 画面を更新
+                renderAll();
+
+                // リセットメッセージを表示
+                showMessage('すべてのデータをリセットしました', 'reset');
+            }
+
+            // 定期的に自動更新（5秒ごと）
+            setInterval(function() {
+                loadVotes();
+                renderAll();
+            }, 5000);
+        });
+
+        // ===== データ読み込み処理 =====
+        function loadVotes() {
+            const savedData = localStorage.getItem(STORAGE_KEY);
+            if (savedData) {
+                try {
+                    votes = JSON.parse(savedData);
+                } catch (e) {
+                    console.error('Failed to parse saved data:', e);
+                    votes = [];
+                }
+            } else {
+                votes = [];
+            }
+        }
+
+        // ===== スコア計算処理 =====
+        function calcScores() {
+            // チームごとの合計点を計算
+            const teamTotals = {
+                'Aチーム': 0,
+                'Bチーム': 0,
+                'Cチーム': 0,
+            };
+
+            votes.forEach(vote => {
+                teamTotals[vote.team] += vote.points;
+            });
+
+            // スコアと順位の配列を作成
+            const scoreArray = Object.entries(teamTotals).map(([team, total]) => ({
+                team: team,
+                total: total,
+            }));
+
+            // スコア降順でソート
+            scoreArray.sort((a, b) => b.total - a.total);
+
+            // 順位を計算（同点は同じ順位）
+            const rankMap = {};
+            let currentRank = 1;
+            for (let i = 0; i < scoreArray.length; i++) {
+                if (i > 0 && scoreArray[i].total < scoreArray[i - 1].total) {
+                    currentRank = i + 1;
+                }
+                rankMap[scoreArray[i].team] = {
+                    total: scoreArray[i].total,
+                    rank: currentRank,
+                };
+            }
+
+            return rankMap;
+        }
+
+        // ===== スコアボード描画処理 =====
+        function renderScoreboard() {
+            const scoreboard = document.getElementById('scoreboard');
+            const scores = calcScores();
+
+            // A/B/C順で表示（固定順）
+            const teams = ['Aチーム', 'Bチーム', 'Cチーム'];
+            scoreboard.innerHTML = '';
+
+            teams.forEach(team => {
+                const score = scores[team];
+                const card = document.createElement('div');
+                card.className = `team-card rank-${score.rank}`;
+                
+                let rankText = `現在 ${score.rank} 位`;
+                if (score.rank === 1) {
+                    rankText = '🥇 ' + rankText;
+                } else if (score.rank === 2) {
+                    rankText = '🥈 ' + rankText;
+                } else if (score.rank === 3) {
+                    rankText = '🥉 ' + rankText;
+                }
+
+                card.innerHTML = `
+                    <div class="team-name">${team}</div>
+                    <div class="team-score">${score.total}</div>
+                    <div class="team-rank">${rankText}</div>
+                `;
+                scoreboard.appendChild(card);
+            });
+        }
+
+        // ===== 投票ログ描画処理 =====
+        function renderVoteLog() {
+            const logTable = document.getElementById('logTable');
+
+            if (votes.length === 0) {
+                logTable.innerHTML = '<tr><td colspan="4" class="log-empty">投票がまだ登録されていません</td></tr>';
+                return;
+            }
+
+            logTable.innerHTML = '';
+            votes.forEach((vote, index) => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${index + 1}</td>
+                    <td>${vote.correctCount}問</td>
+                    <td>${vote.points}点</td>
+                    <td>${vote.team}</td>
+                `;
+                logTable.appendChild(row);
+            });
+        }
+
+        // ===== 全描画処理 =====
+        function renderAll() {
+            renderScoreboard();
+            renderVoteLog();
+        }
+
+        // ===== メッセージ表示処理 =====
+        function showMessage(text, type) {
+            const messageEl = document.getElementById('message');
+            messageEl.textContent = text;
+            messageEl.className = `message ${type}`;
+
+            // 3秒後に非表示
+            setTimeout(() => {
+                messageEl.className = 'message';
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
